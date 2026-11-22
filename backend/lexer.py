@@ -18,21 +18,23 @@ CHARACTER = ALPHA | DIGITS | SYMBOLS | WHITESPACE
 IDENT_REST = ALPHA | DIGITS | {"_"}
 
 KEYWORD_TOKENS = {
-    "let": "LET", "const": "CONST", "fn": "FN", "return": "RETURN",
-    "if": "IF", "else": "ELSE", "for": "FOR", "while": "WHILE",
-    "break": "BREAK", "continue": "CONTINUE", "print": "PRINT",
-    "input": "INPUT", "assert": "ASSERT", "as": "AS",
+    "let": "KW_LET", "const": "KW_CONST", "fn": "KW_FN",
+    "return": "KW_RETURN", "if": "KW_IF", "else": "KW_ELSE",
+    "for": "KW_FOR", "while": "KW_WHILE", "break": "KW_BREAK",
+    "continue": "KW_CONTINUE", "print": "KW_PRINT", "input": "KW_INPUT",
+    "assert": "KW_ASSERT", "as": "KW_AS", "import": "KW_IMPORT",
 }
 TYPE_TOKENS = {
-    "int": "TYPE_INT", "float": "TYPE_FLOAT",
-    "bool": "TYPE_BOOL", "text": "TYPE_TEXT",
+    "int": "RW_INT", "float": "RW_FLOAT",
+    "bool": "RW_BOOL", "text": "RW_TEXT",
 }
-BOOLEAN_TOKENS = {"true": "TRUE", "false": "FALSE"}
+BOOLEAN_TOKENS = {"true": "BOL_T", "false": "BOL_F"}
+BOOLEAN_VALUES = {"true": True, "false": False}
 DIMENSION_TOKENS = {
-    "Length": "DIMENSION_LENGTH", "Mass": "DIMENSION_MASS",
-    "Time": "DIMENSION_TIME", "Force": "DIMENSION_FORCE",
+    "Length": "RW_LENGTH", "Mass": "RW_MASS",
+    "Time": "RW_TIME", "Force": "RW_FORCE",
 }
-NOISE_WORD_TOKENS = {"to": "TO", "then": "THEN", "do": "DO"}
+NOISE_WORD_TOKENS = {"to": "NW_TO", "then": "NW_THEN", "do": "NW_DO"}
 
 WORD_CLASSES = {
     **KEYWORD_TOKENS,
@@ -43,166 +45,29 @@ WORD_CLASSES = {
 }
 
 TWO_CHAR_OPERATORS = {
-    "+=": "PLUS_ASSIGN", "-=": "MINUS_ASSIGN",
-    "*=": "MULTIPLY_ASSIGN", "/=": "DIVIDE_ASSIGN",
-    "==": "EQUAL", "!=": "NOT_EQUAL",
-    "<=": "LESS_THAN_OR_EQUAL", ">=": "GREATER_THAN_OR_EQUAL",
-    "&&": "LOGICAL_AND", "||": "LOGICAL_OR",
-    "++": "INCREMENT", "--": "DECREMENT",
+    "+=": "ASG_ADD", "-=": "ASG_SUB",
+    "*=": "ASG_MUL", "/=": "ASG_DIV",
+    "==": "REL_EQ", "!=": "REL_NE",
+    "<=": "REL_LE", ">=": "REL_GE",
+    "&&": "LOG_AND", "||": "LOG_OR",
+    "++": "UPD_INC", "--": "UPD_DEC",
 }
 ONE_CHAR_OPERATORS = {
-    "=": "ASSIGN",
-    "+": "PLUS", "-": "MINUS",
-    "*": "MULTIPLY", "/": "DIVIDE",
-    "%": "MODULO", "^": "POWER",
-    "<": "LESS_THAN", ">": "GREATER_THAN",
-    "!": "LOGICAL_NOT",
+    "=": "ASG",
+    "+": "AR_ADD", "-": "AR_SUB",
+    "*": "AR_MUL", "/": "AR_DIV",
+    "%": "AR_MOD", "^": "AR_POW",
+    "<": "REL_LT", ">": "REL_GT",
+    "!": "LOG_NOT",
+    "&": "AMP", "|": "BAR",
 }
-OPERATOR_START = set("+-*/%^<>=!&|")
+OPERATOR_START = set(ONE_CHAR_OPERATORS)
 
 DELIMITERS = {
-    ";": "SEMICOLON", "(": "LPAREN", ")": "RPAREN",
-    "{": "LBRACE", "}": "RBRACE", "[": "LBRACKET", "]": "RBRACKET",
-    ",": "COMMA", ":": "COLON",
+    ";": "SEM", "(": "PAR_L", ")": "PAR_R",
+    "{": "BRC_L", "}": "BRC_R", "[": "BRK_L", "]": "BRK_R",
+    ",": "COM", ":": "COL",
 }
-
-MAX_UNIT_TEXT = 128
-MAX_UNIT_FACTORS = 8
-MAX_WRITTEN_EXPONENT = 16
-
-
-class _UnitError(Exception):
-    pass
-
-
-def _unit_tokens(text: str) -> List[Tuple[str, str]]:
-    toks: List[Tuple[str, str]] = []
-    i, n = 0, len(text)
-    while i < n:
-        c = text[i]
-        if c in (" ", "\t"):
-            i += 1
-        elif c in ALPHA:
-            j = i + 1
-            while j < n and text[j] in IDENT_REST:
-                j += 1
-            toks.append(("id", text[i:j]))
-            i = j
-        elif c in DIGITS:
-            j = i + 1
-            while j < n and text[j] in DIGITS:
-                j += 1
-            toks.append(("num", text[i:j]))
-            i = j
-        elif c in "^*/()-":
-            toks.append((c, c))
-            i += 1
-        else:
-            raise _UnitError("invalid character %r" % c)
-    return toks
-
-
-def _describe(tok: Tuple[Optional[str], Optional[str]]) -> str:
-    kind, val = tok
-    if kind is None:
-        return "end of the unit expression"
-    if kind == "id":
-        return "unit symbol '%s'" % val
-    if kind == "num":
-        return "number '%s'" % val
-    return "'%s'" % val
-
-
-class _UnitParser:
-    def __init__(self, toks: List[Tuple[str, str]]):
-        self.toks = toks
-        self.i = 0
-        self.factors = 0
-
-    def peek(self) -> Tuple[Optional[str], Optional[str]]:
-        return self.toks[self.i] if self.i < len(self.toks) else (None, None)
-
-    def parse(self) -> None:
-        self.product()
-        if self.peek()[0] == "/":
-            self.i += 1
-            self.denominator()
-        kind, val = self.peek()
-        if kind is not None:
-            self.leftover(kind)
-        if self.factors > MAX_UNIT_FACTORS:
-            raise _UnitError("more than %d unit-factor occurrences" % MAX_UNIT_FACTORS)
-
-    def leftover(self, kind: str) -> None:
-        if kind == "/":
-            raise _UnitError("repeated division is invalid (only one top-level '/' is allowed)")
-        if kind == "id":
-            raise _UnitError("implicit multiplication is invalid; write '*' between units")
-        if kind == "num":
-            raise _UnitError("numeric scale factors are not allowed inside unit expressions")
-        if kind == ")":
-            raise _UnitError("unbalanced ')'")
-        raise _UnitError("unexpected %s" % _describe(self.peek()))
-
-    def product(self) -> None:
-        self.power()
-        while self.peek()[0] == "*":
-            self.i += 1
-            self.power()
-
-    def power(self) -> None:
-        kind, _ = self.peek()
-        if kind == "num":
-            raise _UnitError("numeric scale factors are not allowed inside unit expressions")
-        if kind == "(":
-            raise _UnitError("parentheses are only allowed around a denominator "
-                             "(a grouped unit expression cannot be raised to a power)")
-        if kind != "id":
-            raise _UnitError("expected a unit symbol but found %s" % _describe(self.peek()))
-        self.i += 1
-        self.factors += 1
-        if self.peek()[0] == "^":
-            self.i += 1
-            negative = False
-            if self.peek()[0] == "-":
-                negative = True
-                self.i += 1
-            kind, val = self.peek()
-            if kind != "num":
-                raise _UnitError("expected an integer exponent after '^'")
-            self.i += 1
-            exponent = -int(val) if negative else int(val)
-            if not -MAX_WRITTEN_EXPONENT <= exponent <= MAX_WRITTEN_EXPONENT:
-                raise _UnitError("written exponent %d is outside -%d..%d"
-                                 % (exponent, MAX_WRITTEN_EXPONENT, MAX_WRITTEN_EXPONENT))
-
-    def denominator(self) -> None:
-        if self.peek()[0] == "(":
-            self.i += 1
-            self.product()
-            if self.peek()[0] == "/":
-                raise _UnitError("nested division is invalid")
-            if self.peek()[0] != ")":
-                raise _UnitError("expected ')' to close the denominator group")
-            self.i += 1
-            if self.peek()[0] == "^":
-                raise _UnitError("a grouped unit expression cannot be raised to a power")
-        else:
-            self.power()
-
-
-def validate_unit_expression(text: str) -> Optional[str]:
-    if len(text) > MAX_UNIT_TEXT:
-        return "unit annotation is longer than %d characters" % MAX_UNIT_TEXT
-    try:
-        toks = _unit_tokens(text)
-        if not toks:
-            return "the unit expression is empty"
-        _UnitParser(toks).parse()
-    except _UnitError as exc:
-        return str(exc)
-    return None
-
 
 @dataclass(frozen=True)
 class Token:
@@ -245,8 +110,10 @@ class SMLLexer:
     def _make(self, ttype: str, mark: Mark, value: Any = None) -> Token:
         return Token(ttype, self.src[mark[0]:self.pos], mark[1], mark[2], value)
 
-    def _error(self, mark: Mark, message: str) -> Token:
-        return self._make("ERROR", mark, message)
+    def _character_error(self, mark: Mark) -> Token:
+        ch = self.src[mark[0]]
+        message = "character %r is not part of the SML character set" % ch
+        return Token("ERR", ch, mark[1], mark[2], message)
 
     def tokenize(self) -> List[Token]:
         tokens: List[Token] = []
@@ -270,7 +137,11 @@ class SMLLexer:
             elif ch == '"':
                 tok = self._string(mark)
             elif ch == "_":
-                tok = self._bad_underscore(mark)
+                self._advance()
+                tok = self._make("UND", mark)
+            elif ch == ".":
+                self._advance()
+                tok = self._make("DOT", mark)
             elif ch in DELIMITERS:
                 self._advance()
                 tok = self._make(DELIMITERS[ch], mark)
@@ -278,133 +149,86 @@ class SMLLexer:
                 tok = self._operator(mark)
             else:
                 self._advance()
-                if ch == ".":
-                    msg = ("unexpected '.' (leading-dot numbers are not allowed)"
-                           if nxt in DIGITS else "unexpected '.'")
-                else:
-                    msg = "character %r is not part of the SML character set" % ch
-                tok = self._error(mark, msg)
+                tok = self._character_error(mark)
 
-            if tok.type == "COMMENT" and not self.keep_comments:
+            if tok.type == "CMT" and not self.keep_comments:
                 continue
             tokens.append(tok)
+        tokens.append(Token("EOF", "", self.line, self.col))
         return tokens
 
     def _line_comment(self, mark: Mark) -> Token:
-        bad: Optional[str] = None
+        bad_mark: Optional[Mark] = None
         while self._peek() not in ("", "\n", "\r"):
             ch = self._peek()
-            if ch not in CHARACTER and bad is None:
-                bad = "character %r is not part of the SML character set" % ch
+            if ch not in CHARACTER and bad_mark is None:
+                bad_mark = self._mark()
             self._advance()
-        if bad is not None:
-            return self._error(mark, bad)
-        return self._make("COMMENT", mark)
+        if bad_mark is not None:
+            return self._character_error(bad_mark)
+        return self._make("CMT", mark)
 
     def _block_comment(self, mark: Mark) -> Token:
-        bad: Optional[str] = None
+        bad_mark: Optional[Mark] = None
         self._advance(2)
+        content_start = self.pos
         while True:
             if self.pos >= len(self.src):
-                return self._error(mark, "unterminated block comment: missing '*/'")
+                if bad_mark is not None:
+                    return self._character_error(bad_mark)
+                content = self.src[content_start:self.pos]
+                return self._make("CMT_U", mark, content)
             if self._peek() == "*" and self._peek(1) == "/":
                 self._advance(2)
-                if bad is not None:
-                    return self._error(mark, bad)
-                return self._make("COMMENT", mark)
+                if bad_mark is not None:
+                    return self._character_error(bad_mark)
+                return self._make("CMT", mark)
             ch = self._peek()
-            if ch not in CHARACTER and bad is None:
-                bad = "character %r is not part of the SML character set" % ch
+            if ch not in CHARACTER and bad_mark is None:
+                bad_mark = self._mark()
             self._advance()
 
     def _word(self, mark: Mark) -> Token:
         while self._peek() in IDENT_REST:
             self._advance()
         text = self.src[mark[0]:self.pos]
-        return self._make(WORD_CLASSES.get(text, "IDENTIFIER"), mark)
-
-    def _bad_underscore(self, mark: Mark) -> Token:
-        while self._peek() in IDENT_REST:
-            self._advance()
-        return self._error(mark, "an identifier cannot begin with an underscore")
+        return self._make(
+            WORD_CLASSES.get(text, "ID"), mark, BOOLEAN_VALUES.get(text)
+        )
 
     def _number(self, mark: Mark) -> Token:
-        problems: List[str] = []
-
         while self._peek() in DIGITS:
             self._advance()
-        int_text = self.src[mark[0]:self.pos]
 
         is_decimal = False
-        if self._peek() == ".":
-            if self._peek(1) in DIGITS:
-                self._advance()
-                while self._peek() in DIGITS:
-                    self._advance()
-                is_decimal = True
-            else:
-                self._advance()
-                problems.append("trailing-dot numbers such as '5.' are not allowed")
-        number_text = self.src[mark[0]:self.pos]
-
-        if len(int_text) > 1 and int_text[0] == "0":
-            problems.append("leading zeros are not allowed")
-
-        kind: Optional[str] = None
-        unit_text = ""
-        nxt = self._peek()
-        if nxt in ALPHA:
-            kind = "simple"
-            start = self.pos
-            while self._peek() in IDENT_REST:
-                self._advance()
-            unit_text = self.src[start:self.pos]
-            if unit_text in WORD_CLASSES:
-                problems.append("'%s' is a reserved word and cannot be a unit symbol" % unit_text)
-        elif nxt == "[":
-            kind = "compound"
+        if self._peek() == "." and self._peek(1) in DIGITS:
             self._advance()
-            start = self.pos
-            while self._peek() not in ("", "]", "\n", "\r"):
+            while self._peek() in DIGITS:
                 self._advance()
-            unit_text = self.src[start:self.pos]
-            if self._peek() != "]":
-                problems.append("unterminated compound unit: missing ']'")
-            else:
-                self._advance()
-                err = validate_unit_expression(unit_text)
-                if err:
-                    problems.append("invalid unit expression: " + err)
-            unit_text = unit_text.strip()
-
-        if problems:
-            return self._error(mark, "; ".join(problems))
-
+            is_decimal = True
+        number_text = self.src[mark[0]:self.pos]
         magnitude = float(number_text) if is_decimal else int(number_text)
-        if kind is None:
-            return self._make("DECIMAL_LITERAL" if is_decimal else "INTEGER_LITERAL",
-                              mark, magnitude)
-        return self._make("QUANTITY_LITERAL", mark,
-                          {"magnitude": magnitude, "unit": unit_text, "form": kind})
+        return self._make("DEC" if is_decimal else "INT", mark, magnitude)
 
     def _string(self, mark: Mark) -> Token:
         self._advance()
         content_start = self.pos
-        bad: Optional[str] = None
+        bad_mark: Optional[Mark] = None
         while True:
             ch = self._peek()
             if ch == "" or ch in ("\n", "\r"):
-                return self._error(mark, "unterminated string literal: missing closing '\"'")
+                if bad_mark is not None:
+                    return self._character_error(bad_mark)
+                content = self.src[content_start:self.pos]
+                return self._make("STR_U", mark, content)
             if ch == '"':
                 content = self.src[content_start:self.pos]
                 self._advance()
-                if bad is not None:
-                    return self._error(mark, bad)
-                return self._make("STRING_LITERAL", mark, content)
-            if ch not in CHARACTER and bad is None:
-                bad = "invalid character %r in string literal" % ch
-            elif ch == "\\" and bad is None:
-                bad = "invalid character '\\' (escape sequences are not supported)"
+                if bad_mark is not None:
+                    return self._character_error(bad_mark)
+                return self._make("STR", mark, content)
+            if ch not in CHARACTER and bad_mark is None:
+                bad_mark = self._mark()
             self._advance()
 
     def _operator(self, mark: Mark) -> Token:
@@ -413,11 +237,8 @@ class SMLLexer:
         if two in TWO_CHAR_OPERATORS:
             self._advance(2)
             return self._make(TWO_CHAR_OPERATORS[two], mark)
-        if c in ONE_CHAR_OPERATORS:
-            self._advance()
-            return self._make(ONE_CHAR_OPERATORS[c], mark)
         self._advance()
-        return self._error(mark, "'%s' is not an operator; did you mean '%s%s'?" % (c, c, c))
+        return self._make(ONE_CHAR_OPERATORS[c], mark)
 
 
 def tokenize(source: str, keep_comments: bool = False) -> List[Token]:
@@ -430,20 +251,19 @@ def _shorten(text: str, limit: int = 48) -> str:
 
 
 def _value_text(tok: Token) -> str:
-    if tok.type in ("INTEGER_LITERAL", "DECIMAL_LITERAL"):
+    if tok.type in ("INT", "DEC"):
         return str(tok.value)
-    if tok.type == "STRING_LITERAL":
+    if tok.type == "STR":
         return _shorten(tok.value, 30)
-    if tok.type == "QUANTITY_LITERAL":
-        return "%s x [%s]" % (tok.value["magnitude"], tok.value["unit"])
     return ""
 
 
 def render_table(tokens: List[Token]) -> str:
     headers = ("#", "Line:Col", "Token", "Lexeme", "Value")
+    visible = [token for token in tokens if token.type != "EOF"]
     rows = [
         (str(i), "%d:%d" % (t.line, t.column), t.type, _shorten(t.lexeme), _value_text(t))
-        for i, t in enumerate(tokens, 1)
+        for i, t in enumerate(visible, 1)
     ]
     widths = [max(len(h), *(len(r[c]) for r in rows)) if rows else len(h)
               for c, h in enumerate(headers)]
@@ -459,8 +279,8 @@ def render_table(tokens: List[Token]) -> str:
 
 
 def render_report(tokens: List[Token]) -> str:
-    errors = [t for t in tokens if t.type == "ERROR"]
-    good = [t for t in tokens if t.type != "ERROR"]
+    errors = [t for t in tokens if t.type == "ERR"]
+    good = [t for t in tokens if t.type not in ("ERR", "EOF")]
     parts = [render_table(tokens), "", "Token summary:"]
     for ttype, n in sorted(Counter(t.type for t in good).items()):
         parts.append("  %-20s %d" % (ttype, n))
@@ -480,7 +300,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     ap = argparse.ArgumentParser(description="Lexical analyzer for SML (Standard Measurement Language).")
     ap.add_argument("file", nargs="?", help="path to an SML source file (omit to read stdin)")
     ap.add_argument("-c", "--code", help="analyze this string instead of a file")
-    ap.add_argument("--comments", action="store_true", help="include COMMENT tokens in the output")
+    ap.add_argument("--comments", action="store_true", help="include CMT tokens in the output")
     ap.add_argument("--json", action="store_true", help="print tokens and errors as JSON")
     args = ap.parse_args(argv)
 
@@ -500,10 +320,11 @@ def main(argv: Optional[List[str]] = None) -> int:
         return 2
 
     tokens = tokenize(source, keep_comments=args.comments)
-    errors = [t for t in tokens if t.type == "ERROR"]
+    errors = [t for t in tokens if t.type == "ERR"]
 
     if args.json:
-        print(json.dumps({"tokens": [asdict(t) for t in tokens if t.type != "ERROR"],
+        print(json.dumps({"tokens": [asdict(t) for t in tokens
+                                     if t.type not in ("ERR", "EOF")],
                           "errors": [asdict(t) for t in errors]}, indent=2))
     else:
         print(render_report(tokens))
