@@ -27,6 +27,9 @@ def health() -> dict[str, str]:
 def analyze(request: AnalyzeRequest) -> dict[str, list[dict]]:
     analyzed = tokenize(request.source, keep_comments=request.keep_comments)
     return {
-        "tokens": [asdict(token) for token in analyzed if token.type != "ERROR"],
-        "errors": [asdict(token) for token in analyzed if token.type == "ERROR"],
+        "tokens": [
+            asdict(token) for token in analyzed
+            if token.type not in ("ERR", "EOF")
+        ],
+        "errors": [asdict(token) for token in analyzed if token.type == "ERR"],
     }

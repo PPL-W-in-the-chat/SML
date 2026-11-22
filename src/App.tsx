@@ -65,10 +65,10 @@ export default function App() {
           line: item.line,
           column: item.column,
           message:
-            item.type === "ERROR" && typeof item.value === "string"
+            item.type === "ERR" && typeof item.value === "string"
               ? item.value
               : undefined,
-          isError: item.type === "ERROR",
+          isError: item.type === "ERR",
         }))
       setRows(nextRows)
       setHasAnalyzed(true)

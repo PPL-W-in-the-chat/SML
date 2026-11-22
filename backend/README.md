@@ -21,56 +21,47 @@ when the input contains lexical errors.
 
 ## Token categories
 
-The lexer produces the following token types:
-
-- Keywords: `LET`, `CONST`, `FN`, `RETURN`, `IF`, `ELSE`, `FOR`, `WHILE`,
-  `BREAK`, `CONTINUE`, `PRINT`, `INPUT`, `ASSERT`, and `AS`
-- Primitive types: `TYPE_INT`, `TYPE_FLOAT`, `TYPE_BOOL`, and `TYPE_TEXT`
-- Boolean literals: `TRUE` and `FALSE`
-- Named dimensions: `DIMENSION_LENGTH`, `DIMENSION_MASS`, `DIMENSION_TIME`,
-  and `DIMENSION_FORCE`
-- Noise words: `TO`, `THEN`, and `DO`
-- User-defined names: `IDENTIFIER`
-- `INTEGER_LITERAL`, `DECIMAL_LITERAL`, `STRING_LITERAL`, and
-  `QUANTITY_LITERAL`
-- `ASSIGN`, `PLUS_ASSIGN`, `MINUS_ASSIGN`, `MULTIPLY_ASSIGN`, and
-  `DIVIDE_ASSIGN`
-- `PLUS`, `MINUS`, `MULTIPLY`, `DIVIDE`, `MODULO`, and `POWER`
-- `EQUAL`, `NOT_EQUAL`, `LESS_THAN`, `GREATER_THAN`,
-  `LESS_THAN_OR_EQUAL`, and `GREATER_THAN_OR_EQUAL`
-- `LOGICAL_AND`, `LOGICAL_OR`, `LOGICAL_NOT`, `INCREMENT`, and `DECREMENT`
-- `SEMICOLON`, `LPAREN`, `RPAREN`, `LBRACE`, `RBRACE`, `LBRACKET`,
-  `RBRACKET`, `COMMA`, and `COLON`
-- `COMMENT` when `--comments` is enabled
-- `ERROR` for invalid input
+The complete parser-facing token vocabulary is defined in
+[`docs/LEXEME_TOKEN_MAPPING.md`](../docs/LEXEME_TOKEN_MAPPING.md). Its short
+categorized names include `KW_IMPORT`, `ID`, `INT`, `DEC`, `STR`, `CMT`, and
+the operator and delimiter families. `ERR` is reserved for a character outside
+the proposal's `Character` set. `EOF` ends the internal token stream but is
+hidden from command-line and JSON presentation.
 
 Each `Token` stores its category, original lexeme, one-based line and column,
-and an optional value. A value may be a parsed number, string contents,
-quantity parts, or an error message. Internally, a lexer mark is the tuple
-`(absolute position, line, column)` where a lexeme begins.
+and an optional value. Internally, a lexer mark is the tuple
+`(absolute position, line, column)` where a lexeme begins; the absolute
+position is not part of the emitted token data.
 
 ## Lexical rules
 
 - The lexer uses maximal munch, so the longest valid lexeme wins. For example,
   `+=` is one operator rather than `+` followed by `=`.
-- Each operator symbol has a distinct token type. `PLUS` and `MINUS` identify
+- Each operator symbol has a distinct token type. `AR_ADD` and `AR_SUB` identify
   the symbols themselves; deciding whether they are unary or binary belongs to
   a future parser.
 - Every fixed language word has a distinct token type. Variable user-defined
-  names remain `IDENTIFIER` tokens.
-- Quantity units must be attached to the magnitude. `100m`, `9.58s`, and
-  `9.8[m/s^2]` are quantity literals. `100 m` and `9.8 [m/s^2]` become
-  separate tokens and are rejected later by the parser.
-- The lexer validates the shape and limits of bracketed unit expressions, but
-  it does not decide whether a unit identifier is registered. Unit resolution
-  happens after parsing.
+  names remain `ID` tokens.
+- The lexer does not construct quantity tokens. For example, `100m` becomes
+  `INT("100") ID("m")`, and compound quantities become ordinary numeric,
+  bracket, identifier, and operator tokens. The future parser checks attachment
+  from token locations and validates unit-expression syntax.
 - Leading `+` and `-` characters are operators, not part of numeric literals.
 - Whitespace and comments are discarded unless `--comments` is supplied.
-- Identifiers cannot begin with an underscore.
-- Numeric literals reject leading zeroes, leading decimal points, and trailing
-  decimal points.
+- An identifier starts with an ASCII letter. A leading underscore is preserved
+  as `UND`, followed by an `ID` when applicable.
+- Leading-zero and dot-adjacent numeric forms are preserved for the parser. For
+  example, `007` becomes `INT`, `5.` becomes `INT DOT`, and `.5` becomes
+  `DOT INT`.
 - String escape sequences are not supported.
-- A lone `&` or `|` is invalid; logical operators are `&&` and `||`.
+- A lone `&` or `|` becomes `AMP` or `BAR`; maximal munch still makes `&&` and
+  `||` become `LOG_AND` and `LOG_OR`.
+- Unterminated strings and block comments become `STR_U` and `CMT_U`. They are
+  parser-facing recovery tokens rather than lexical errors.
+
+Forms made only from valid `Character` members can still be invalid SML. The
+lexer preserves those forms so the future parser can report the relevant
+syntax restriction. Only an outside-set character produces `ERR`.
 
 ## Unit-expression grammar
 
@@ -81,8 +72,9 @@ UnitDenominator = UnitPower | "(" UnitProduct ")"
 UnitExpression  = UnitProduct [ "/" UnitDenominator ]
 ```
 
-The text inside one unit annotation is limited to 128 ASCII characters, eight
-written unit-factor occurrences, and exponents from `-16` through `16`.
+The future parser will enforce the grammar and limits above. The text inside
+one unit annotation is limited to 128 ASCII characters, eight written
+unit-factor occurrences, and exponents from `-16` through `16`.
 
 ## Implementation map
 
@@ -91,17 +83,16 @@ The source is organized in this order:
 1. Character sets and identifier characters
 2. Keywords, primitive types, dimensions, literals, and noise words
 3. Operators and delimiters
-4. Unit-expression tokenization, parsing, and validation
-5. The immutable `Token` data class
-6. The stateful `SMLLexer`
-7. Table, report, JSON, and command-line output
+4. The immutable `Token` data class
+5. The stateful `SMLLexer`
+6. Table, report, JSON, and command-line output
 
 Within `SMLLexer`, scanning proceeds through low-level cursor helpers, the main
-dispatch loop, comments, words, numbers and quantities, strings, and operators.
-Number scanning reads the integer portion, an optional fractional portion, and
-then an optional attached simple or compound unit. Block comments consume their
-opening `/*` before searching for the closing `*/`; strings similarly consume
-their opening quote before collecting their contents.
+dispatch loop, comments, words, numbers, strings, and operators. Number scanning
+reads consecutive digits and consumes a fractional part only when a dot is
+followed by a digit. Block comments consume their opening `/*` before searching
+for the closing `*/`; strings similarly consume their opening quote before
+collecting their contents.
 
 The full language specification is in
 `docs/SML_Programming_Language_Proposal.md`.

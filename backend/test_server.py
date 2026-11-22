@@ -9,13 +9,14 @@ class AnalyzerApiContractTests(unittest.TestCase):
 
     def test_analysis_separates_tokens_and_errors(self) -> None:
         result = analyze(
-            AnalyzeRequest(source="let distance = 100m;\nlet invalid = 01;")
+            AnalyzeRequest(source="let distance = 100m;\nlet invalid = @;")
         )
 
         self.assertGreater(len(result["tokens"]), 0)
         self.assertEqual(len(result["errors"]), 1)
-        self.assertEqual(result["errors"][0]["type"], "ERROR")
+        self.assertEqual(result["errors"][0]["type"], "ERR")
         self.assertEqual(result["errors"][0]["line"], 2)
+        self.assertNotIn("EOF", [token["type"] for token in result["tokens"]])
 
     def test_camel_case_comments_option(self) -> None:
         request = AnalyzeRequest.model_validate(
@@ -23,7 +24,7 @@ class AnalyzerApiContractTests(unittest.TestCase):
         )
         result = analyze(request)
 
-        self.assertEqual(result["tokens"][0]["type"], "COMMENT")
+        self.assertEqual(result["tokens"][0]["type"], "CMT")
 
 
 if __name__ == "__main__":
