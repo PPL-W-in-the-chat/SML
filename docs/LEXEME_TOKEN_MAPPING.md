@@ -154,7 +154,7 @@ belongs to the parser.
 | Lexeme | Token |
 | --- | --- |
 | `&&` | `LOG_AND` |
-| `||` | `LOG_OR` |
+| `\|\|` | `LOG_OR` |
 | `!` | `LOG_NOT` |
 
 ## Update operators
@@ -198,7 +198,7 @@ tokenized rather than reported as lexical errors.
 | `.` | `DOT` | Preserve leading-dot and trailing-dot forms |
 | `_` | `UND` | Preserve an underscore at token-start position |
 | `&` | `AMP` | Preserve a lone ampersand |
-| `|` | `BAR` | Preserve a lone vertical bar |
+| `\|` | `BAR` | Preserve a lone vertical bar |
 
 Maximal munch gives the multi-character logical operators priority:
 
